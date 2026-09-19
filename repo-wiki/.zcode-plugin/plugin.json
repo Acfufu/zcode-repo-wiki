@@ -1,0 +1,22 @@
+{
+  "name": "repo-wiki",
+  "version": "0.1.0",
+  "description": "纯本地 Repo Wiki：零上传、零网络地生成仓库深度文档（分页 + 目录树 + 图表），内置离线 mermaid 渲染与自包含静态查看器，支持导入旧版 ~/.zcode/v2/repo-wiki 存量数据。",
+  "description_i18n": {
+    "en": "Local-only Repo Wiki: generate deep repo documentation (paged wiki + tree + diagrams) with zero upload and zero network; ships an offline mermaid renderer and a self-contained static viewer; imports legacy ~/.zcode/v2/repo-wiki data.",
+    "zh-CN": "纯本地 Repo Wiki：零上传、零网络地生成仓库深度文档（分页 + 目录树 + 图表），内置离线 mermaid 渲染与自包含静态查看器，支持导入旧版 ~/.zcode/v2/repo-wiki 存量数据。"
+  },
+  "author": {
+    "name": "acfufu"
+  },
+  "license": "MIT",
+  "keywords": [
+    "wiki",
+    "documentation",
+    "offline",
+    "local-first",
+    "privacy"
+  ],
+  "skills": "skills",
+  "commands": "commands"
+}
