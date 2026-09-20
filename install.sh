@@ -54,23 +54,33 @@ CACHE_CREATED=0
 # --delete-excluded：把历史安装遗留的 tests/、__pycache__ 等排除项从缓存中清除
 rsync -a --delete --delete-excluded "${EXCLUDES[@]}" "$SRC/" "$CACHE/"
 
-# zip 每次重建（先打临时包再替换）：sha256 与缓存内容保持一致，失败时保留旧包
+# zip 在缺失或源文件较新时重建（避免陈旧 sha，也避免沙箱安装无谓改写仓库根产物）
 ZIP_PARENT="$(dirname "$SRC")"
 SRC_BASENAME="$(basename "$SRC")"
 ZIP_NAME="$NAME-$VER.zip"
 ZIP_TMP="$ZIP_NAME.tmp-$$"
-rm -f "$ZIP_PARENT/$ZIP_TMP"
-if ! (cd "$ZIP_PARENT" && zip -qr "$ZIP_TMP" "$SRC_BASENAME" "${ZIP_EXCLUDES[@]}"); then
-  rm -f "$ZIP_PARENT/$ZIP_TMP"
-  if [ "$CACHE_CREATED" = 1 ]; then
-    rm -rf "$CACHE"
-    echo "[install] 失败: zip 打包失败，已回滚本次新建的缓存目录，旧包保持不动" >&2
-  else
-    echo "[install] 失败: zip 打包失败，注册未完成（缓存内容已更新），旧包保持不动" >&2
-  fi
-  exit 3
+NEED_ZIP=0
+if [ ! -f "$ZIP_PARENT/$ZIP_NAME" ]; then
+  NEED_ZIP=1
+elif [ -n "$(find "$SRC" -type f -newer "$ZIP_PARENT/$ZIP_NAME" \
+        -not -path '*/__pycache__/*' -not -name '*.pyc' -not -path '*/tests/*' \
+        -print -quit 2>/dev/null)" ]; then
+  NEED_ZIP=1
 fi
-mv -f "$ZIP_PARENT/$ZIP_TMP" "$ZIP_PARENT/$ZIP_NAME"
+if [ "$NEED_ZIP" = 1 ]; then
+  rm -f "$ZIP_PARENT/$ZIP_TMP"
+  if ! (cd "$ZIP_PARENT" && zip -qr "$ZIP_TMP" "$SRC_BASENAME" "${ZIP_EXCLUDES[@]}"); then
+    rm -f "$ZIP_PARENT/$ZIP_TMP"
+    if [ "$CACHE_CREATED" = 1 ]; then
+      rm -rf "$CACHE"
+      echo "[install] 失败: zip 打包失败，已回滚本次新建的缓存目录，旧包保持不动" >&2
+    else
+      echo "[install] 失败: zip 打包失败，注册未完成（缓存内容已更新），旧包保持不动" >&2
+    fi
+    exit 3
+  fi
+  mv -f "$ZIP_PARENT/$ZIP_TMP" "$ZIP_PARENT/$ZIP_NAME"
+fi
 
 python3 - "$NAME" "$VER" "$MARKET" "$CACHE" "$SRC" "$TS" <<'PY'
 import hashlib, json, os, sys, time
