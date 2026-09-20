@@ -8,4 +8,4 @@ Use the `repo-wiki` skill for this request:
 
 $ARGUMENTS
 
-Hard constraints: the whole workflow must stay local — no network calls, no uploads, never read `.git` object contents. Produce a self-contained static site and report its absolute path.
+Hard constraints: the whole workflow must stay local — no network calls, no uploads, no reading `.git` object contents (the only exception is an optional `git log --oneline -15` summary). Produce a self-contained static site and report its absolute path.

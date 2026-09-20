@@ -1,10 +1,10 @@
 {
   "name": "repo-wiki",
   "version": "0.2.0",
-  "description": "纯本地 Repo Wiki：零上传、零网络地生成仓库深度文档（分页 + 目录树 + 图表），生成配置全量可调（语言/粒度/篇幅/图表/引用），内置离线 mermaid 渲染与自包含静态查看器，selfcheck 含引用可解析性机检，支持导入旧版存量数据。",
+  "description": "纯本地 Repo Wiki：零上传、零网络地生成仓库深度文档（分页 + 目录树 + 图表），生成配置全量可调（语言/粒度/篇幅/图表/引用/页面树/骨架），内置离线 mermaid 渲染与自包含静态查看器，站点经 SVG 白名单净化并通过外链与引用可解析性机检，支持导入旧版 ~/.zcode/v2/repo-wiki 存量数据。",
   "description_i18n": {
-    "en": "Local-only Repo Wiki: generate deep repo documentation (paged wiki + tree + diagrams) with zero upload and zero network; fully tunable generation config (language/granularity/length/diagrams/citations); ships an offline mermaid renderer and a self-contained static viewer with reference-resolution checks in selfcheck; imports legacy ~/.zcode/v2/repo-wiki data.",
-    "zh-CN": "纯本地 Repo Wiki：零上传、零网络地生成仓库深度文档（分页 + 目录树 + 图表），内置离线 mermaid 渲染与自包含静态查看器，支持导入旧版 ~/.zcode/v2/repo-wiki 存量数据。"
+    "en": "Local-only Repo Wiki: generate deep repo documentation (paged wiki + tree + diagrams) with zero upload and zero network; fully tunable generation config (language/granularity/length/diagrams/citations/tree/skeleton); ships an offline mermaid renderer and a self-contained static viewer with SVG allowlist sanitization plus external-link and reference-resolution checks; imports legacy ~/.zcode/v2/repo-wiki data.",
+    "zh-CN": "纯本地 Repo Wiki：零上传、零网络地生成仓库深度文档（分页 + 目录树 + 图表），生成配置全量可调（语言/粒度/篇幅/图表/引用/页面树/骨架），内置离线 mermaid 渲染与自包含静态查看器，站点经 SVG 白名单净化并通过外链与引用可解析性机检，支持导入旧版 ~/.zcode/v2/repo-wiki 存量数据。"
   },
   "author": {
     "name": "acfufu"

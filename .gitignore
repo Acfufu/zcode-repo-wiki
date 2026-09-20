@@ -2,4 +2,9 @@ __pycache__/
 *.pyc
 .zcode-wiki/
 *.zip
+*.zip.tmp-*
 .DS_Store
+repo-wiki/tests/fixture/*/site/
+.lazyzcode/
+artifacts/
+
