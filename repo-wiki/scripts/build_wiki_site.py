@@ -406,6 +406,159 @@ def build_site(wiki_dir: Path) -> dict:
             "mermaid": MERMAID_PATH.exists()}
 
 
+# ---------------------------------------------------------------- config
+
+DEFAULT_CONFIG = {
+    "language": "auto",            # auto=跟随仓库文档语言；否则显式 BCP47 代码
+    "granularity": "theme",        # theme=按主题合并 | file=逐文件 | hybrid
+    "pages": {"min": 6, "max": 40},
+    "tree": {"maxChildren": 8, "maxDepth": 4},
+    "wordsPerPage": [400, 900],
+    "diagrams": "minimal",         # none | minimal(架构/数据流/模块边界页≥1图) | rich(尽量每页1图)
+    "citations": "strict",         # strict=每个论断必须 path:line（selfcheck 机检永远常开）
+    "skeleton": {"knownIssues": True},
+}
+
+# 预设档位：展开为上述字段的快捷方式；同层/后层的显式字段覆盖预设
+PROFILES = {
+    "compact":  {"pages": {"min": 6, "max": 16},  "wordsPerPage": [300, 600],
+                 "diagrams": "minimal", "granularity": "theme"},
+    "standard": {"pages": {"min": 6, "max": 40},  "wordsPerPage": [400, 900],
+                 "diagrams": "minimal", "granularity": "theme"},
+    "deep":     {"pages": {"min": 12, "max": 40}, "wordsPerPage": [800, 1600],
+                 "diagrams": "minimal", "granularity": "theme"},
+    "legacy":   {"pages": {"min": 20, "max": 40}, "wordsPerPage": [1200, 2200],
+                 "diagrams": "rich", "granularity": "file"},
+}
+
+_LANG_RE = re.compile(r"^[a-zA-Z]{2,3}(-[A-Za-z0-9]{2,8})*$")
+_NESTED = {"pages", "tree", "skeleton"}
+
+
+def _apply_layer(resolved, prov, layer_name, cfg, errors):
+    if not isinstance(cfg, dict):
+        errors.append(f"{layer_name} 配置必须是 JSON 对象")
+        return None
+    profile = cfg.get("profile")
+    if profile is not None:
+        if profile not in PROFILES:
+            errors.append(f"{layer_name}: 未知 profile '{profile}'（可选: {'/'.join(PROFILES)}）")
+        else:
+            _apply_layer(resolved, prov, f"{layer_name}:profile", PROFILES[profile], errors)
+    for key, val in cfg.items():
+        if key == "profile":
+            continue
+        if key in _NESTED and isinstance(resolved.get(key), dict) and isinstance(val, dict):
+            resolved[key] = {**resolved[key], **val}
+        else:
+            resolved[key] = val
+        prov[key] = layer_name
+    return resolved
+
+
+def _validate(resolved, errors, warns):
+    lang = resolved.get("language")
+    if lang != "auto" and not (isinstance(lang, str) and _LANG_RE.match(lang)):
+        errors.append(f"language 非法: {lang!r}（用 'auto' 或 BCP47 代码如 zh-CN/en）")
+    if resolved.get("granularity") not in ("theme", "file", "hybrid"):
+        errors.append(f"granularity 非法: {resolved.get('granularity')!r}")
+    if resolved.get("diagrams") not in ("none", "minimal", "rich"):
+        errors.append(f"diagrams 非法: {resolved.get('diagrams')!r}")
+    if resolved.get("citations") not in ("relaxed", "strict"):
+        errors.append(f"citations 非法: {resolved.get('citations')!r}")
+    pages = resolved.get("pages") or {}
+    if not (isinstance(pages.get("min"), int) and isinstance(pages.get("max"), int)
+            and 1 <= pages["min"] <= pages["max"] <= 100):
+        errors.append(f"pages 非法: {pages}（需 1 ≤ min ≤ max ≤ 100）")
+    tree = resolved.get("tree") or {}
+    if not (isinstance(tree.get("maxChildren"), int) and 2 <= tree["maxChildren"] <= 16):
+        errors.append(f"tree.maxChildren 非法: {tree.get('maxChildren')!r}（2–16）")
+    if not (isinstance(tree.get("maxDepth"), int) and 2 <= tree["maxDepth"] <= 6):
+        errors.append(f"tree.maxDepth 非法: {tree.get('maxDepth')!r}（2–6）")
+    wpp = resolved.get("wordsPerPage")
+    if not (isinstance(wpp, list) and len(wpp) == 2
+            and all(isinstance(n, int) and 100 <= n <= 5000 for n in wpp) and wpp[0] <= wpp[1]):
+        errors.append(f"wordsPerPage 非法: {wpp!r}（[min, max]，100–5000）")
+    if not isinstance((resolved.get("skeleton") or {}).get("knownIssues"), bool):
+        errors.append("skeleton.knownIssues 必须是布尔值")
+    if resolved.get("granularity") == "file" and pages.get("max", 0) < 20:
+        warns.append("granularity=file 但 pages.max<20：逐文件切分通常需要更多页，建议调高")
+
+
+def cmd_resolve(args):
+    repo = Path(args.repo).expanduser().resolve()
+    if not repo.exists():
+        sys.exit(f"[repo-wiki] 仓库不存在: {repo}")
+    errors, warns = [], []
+    resolved = json.loads(json.dumps(DEFAULT_CONFIG))  # deep copy
+    prov = {k: "builtin" for k in resolved}
+
+    home_cfg = HOME / ".zcode" / "repo-wiki" / "config.json"
+    repo_cfg = repo / ".zcode-wiki" / "config.json"
+    layers = {}
+    for name, path in (("global", home_cfg), ("repo", repo_cfg)):
+        if path.exists():
+            try:
+                layers[name] = json.loads(path.read_text(encoding="utf-8"))
+            except Exception as exc:
+                sys.exit(f"[repo-wiki] {path} 不是合法 JSON: {exc}")
+        else:
+            layers[name] = None
+    for name in ("global", "repo"):
+        if layers[name] is not None:
+            _apply_layer(resolved, prov, name, layers[name], errors)
+
+    flag_sets = []
+    for pair in (args.set or []):
+        if "=" not in pair:
+            sys.exit(f"[repo-wiki] --set 需要 k=v 形式，收到: {pair}")
+        key, raw = pair.split("=", 1)
+        try:
+            val = json.loads(raw)
+        except Exception:
+            val = raw
+        node = resolved
+        parts = key.split(".")
+        for part in parts[:-1]:
+            if not isinstance(node.get(part), dict):
+                node[part] = {}
+            node = node[part]
+        node[parts[-1]] = val
+        prov[parts[0]] = "flag"
+        flag_sets.append(f"{key}={raw}")
+    if flag_sets:
+        layers["flags"] = flag_sets
+
+    _validate(resolved, errors, warns)
+    if errors:
+        for e in errors:
+            print(f"[repo-wiki] FAIL 配置非法: {e}")
+        sys.exit(1)
+
+    meta = {
+        "schema": "repo-wiki-local/1",
+        "kind": "generation-meta",
+        "generatedAt": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "resolved": resolved,
+        "provenance": prov,
+        "layers": {
+            "global": str(home_cfg) if layers["global"] is not None else None,
+            "repo": str(repo_cfg) if layers["repo"] is not None else None,
+            "flags": layers.get("flags", []),
+        },
+    }
+    print(json.dumps(resolved, ensure_ascii=False, indent=2))
+    if args.dry_run:
+        return
+    out = repo / ".zcode-wiki" / "generation-meta.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    src_desc = ", ".join(f"{k}←{v}" for k, v in prov.items() if v != "builtin") or "全部默认"
+    print(f"[repo-wiki] 生效配置已写入 {out}（覆盖: {src_desc}）", file=sys.stderr)
+    for w in warns:
+        print(f"[repo-wiki] WARN {w}", file=sys.stderr)
+
+
 # ---------------------------------------------------------------- import legacy
 
 def load_legacy(source: Path):
@@ -533,6 +686,50 @@ def cmd_build(args):
 
 _EXT_RE = re.compile(r'(?:href|src|xlink:href)="(https?://[^"]+)"')
 
+# path:line 引用机检：`` `相对路径:行号` `` 或 `` `相对路径:起-止` ``
+_REF_RE = re.compile(
+    r"`([A-Za-z0-9._\-/]+\.(?:ts|tsx|js|jsx|cjs|mjs|json|md|wxml|py|go|rs|swift|kt|java|vue|yml|yaml|toml)):(\d+)(?:-(\d+))?`")
+_REF_SKIP_WARN = "引用机检跳过（仓库根不可用，无法解析相对路径）"
+
+
+def _check_refs(data, problems, warns):
+    """常开质量门：所有 path:line 引用必须文件存在且行号在界内。
+
+    仓库根取 wiki.json 的 repoId；仓库已移动/删除的存量 wiki 降级为警告而非失败。
+    """
+    repo_id = str(data.get("repoId") or "")
+    repo_root = Path(repo_id).expanduser() if repo_id else None
+    if repo_root is None or not repo_root.exists():
+        warns.append(_REF_SKIP_WARN + f": {repo_id or '未记录'}")
+        return
+    line_counts = {}
+    n_checked = 0
+    n_before = len(problems)
+    for p in data.get("pages") or []:
+        for m in _REF_RE.finditer(p.get("markdown") or ""):
+            n_checked += 1
+            rel, s = m.group(1), int(m.group(2))
+            e = int(m.group(3) or m.group(2))
+            f = repo_root / rel
+            if not f.is_file():
+                problems.append(f"页面 {p.get('id')}: 引用文件不存在 {rel}")
+                continue
+            if rel not in line_counts:
+                try:
+                    line_counts[rel] = f.read_text(encoding="utf-8", errors="replace").count("\n") + 1
+                except OSError:
+                    problems.append(f"页面 {p.get('id')}: 引用文件不可读 {rel}")
+                    continue
+            if s < 1 or e < s or e > line_counts[rel]:
+                problems.append(
+                    f"页面 {p.get('id')}: 行号越界 {rel}:{s}-{e}（文件共 {line_counts[rel]} 行）")
+    if n_checked:
+        n_bad = len(problems) - n_before
+        if n_bad:
+            print(f"[repo-wiki] 引用机检: {n_checked} 处中 {n_bad} 处失败（见 FAIL）")
+        else:
+            print(f"[repo-wiki] 引用机检: {n_checked} 处 path:line 引用全部可解析")
+
 
 def cmd_selfcheck(args):
     wiki_dir = Path(args.wiki).expanduser()
@@ -566,6 +763,7 @@ def cmd_selfcheck(args):
             problems.append(f"外链 {url}")
         if "__esbuild_esm_mermaid_nm" not in doc:
             warns.append("站点未内联 mermaid 运行时（图表将仅显源码）")
+    _check_refs(data, problems, warns)
     for w in warns:
         print(f"[repo-wiki] WARN {w}")
     if problems:
@@ -585,8 +783,13 @@ def main():
     im = sub.add_parser("import-legacy", help="导入旧版 repo-wiki 数据并构建")
     im.add_argument("source")
     im.add_argument("--dest", default=None)
-    sc = sub.add_parser("selfcheck", help="树完整性 + 零外链校验")
+    sc = sub.add_parser("selfcheck", help="树完整性 + 零外链 + 引用可解析性校验")
     sc.add_argument("--wiki", required=True)
+    rc = sub.add_parser("resolve-config", help="三层合并生成配置并落 generation-meta.json")
+    rc.add_argument("--repo", required=True, help="仓库路径")
+    rc.add_argument("--set", action="append", default=[], metavar="K=V",
+                    help="覆盖字段，点路径寻址（可重复，如 --set language=zh-CN --set pages.max=24）")
+    rc.add_argument("--dry-run", action="store_true", help="只打印生效配置，不写文件")
     args = ap.parse_args()
     if args.cmd == "build":
         cmd_build(args)
@@ -594,6 +797,8 @@ def main():
         cmd_import(args)
     elif args.cmd == "selfcheck":
         cmd_selfcheck(args)
+    elif args.cmd == "resolve-config":
+        cmd_resolve(args)
 
 
 if __name__ == "__main__":

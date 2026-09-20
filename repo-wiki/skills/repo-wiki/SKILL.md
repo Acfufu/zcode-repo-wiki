@@ -22,13 +22,30 @@ description: 纯本地 Repo Wiki（零上传）。Use when the user says "repo w
 `find ~/.zcode/cli/plugins/cache -path '*repo-wiki*' -name build_wiki_site.py 2>/dev/null | head -1` 定位。
 纯 Python3 标准库，无第三方依赖，无网络行为。
 
-三个子命令：
+四个子命令：
 
 ```bash
-python3 build_wiki_site.py build       --wiki <.zcode-wiki目录>          # 由 wiki.json 构建自包含 site/index.html
-python3 build_wiki_site.py import-legacy <hash|绝对路径> [--dest <dir>]  # 导入旧版 ~/.zcode/v2/repo-wiki/<hash>
-python3 build_wiki_site.py selfcheck   --wiki <.zcode-wiki目录>          # 树完整性 + 零外链校验，exit 0/1
+python3 build_wiki_site.py build          --wiki <.zcode-wiki目录>   # 由 wiki.json 构建自包含 site/index.html
+python3 build_wiki_site.py resolve-config --repo <仓库路径> [--set k=v …]  # 三层合并生成配置，落 generation-meta.json
+python3 build_wiki_site.py import-legacy  <hash|绝对路径> [--dest <dir>]  # 导入旧版 ~/.zcode/v2/repo-wiki/<hash>
+python3 build_wiki_site.py selfcheck      --wiki <.zcode-wiki目录>   # 树完整性 + 零外链 + 引用可解析性，exit 0/1
 ```
+
+## 生成配置（resolve-config）
+
+所有可调项由配置承载，本文只保留硬约束。合并优先级：**内置默认 → `~/.zcode/repo-wiki/config.json`（全局）→ `<仓库>/.zcode-wiki/config.json`（仓库级）→ `--set k=v` 旗标（最高）**。`resolve-config --repo <仓库路径>` 输出生效配置，并把合并结果（含每个字段来自哪一层的 provenance）写入 `<仓库>/.zcode-wiki/generation-meta.json`；后续阶段一律以该输出为准，不再自行判定。
+
+| 字段 | 取值 | 默认（=零配置行为） |
+| --- | --- | --- |
+| `language` | `auto` 或 BCP47 代码 | `auto`（跟随仓库文档语言） |
+| `granularity` | `theme`（按主题合并）\| `file`（逐文件切页）\| `hybrid` | `theme` |
+| `pages` | `{min, max}` | `{6, 40}` |
+| `tree` | `{maxChildren, maxDepth}` | `{8, 4}` |
+| `wordsPerPage` | `[min, max]` | `[400, 900]` |
+| `diagrams` | `none` \| `minimal`（架构/数据流/模块边界页 ≥1 图）\| `rich`（尽量每页 1 图） | `minimal` |
+| `citations` | `relaxed` \| `strict`（每论断必须 `path:line`） | `strict` |
+| `skeleton` | `{knownIssues: bool}`（已知问题/风险页是否必选） | `true` |
+| `profile` | `compact` \| `standard` \| `deep` \| `legacy`（展开为上面多字段的快捷档位，可被显式字段覆盖） | `standard` |
 
 ## 子命令一：generate <仓库路径>
 
@@ -37,23 +54,31 @@ python3 build_wiki_site.py selfcheck   --wiki <.zcode-wiki目录>          # 树
 - 跳过目录：`.git`、`node_modules`、`dist`、`build`、`out`、`target`、`.venv`、`vendor`、`Pods`、锁文件、二进制与大资产。
 - 用 `find … -type f | wc -l`、按扩展名统计等手段掌握规模，不要 cat 大文件。
 
-### Phase 1 语言判定
-跟仓库现有文档走：README/注释以中文为主 → 全部页面用 zh-CN，否则用 en。
+### Phase 0.5 解析配置
+- 运行 `resolve-config --repo <仓库路径>`，读取输出的生效配置；用户口头指定的参数（如"用中文""切细一点"）转成 `--set` 传入后再执行。
+- 之后每个阶段的可调行为（语言、页数、页长、粒度、图表、引用、骨架）都取自该输出。
 
-### Phase 2 规划页面树（6–40 页）
+### Phase 1 语言判定
+- 配置 `language != auto` → 直接使用该语言。
+- `language == auto` → 跟仓库现有文档走：README/注释以中文为主 → 全部页面用 zh-CN，否则用 en。
+
+### Phase 2 规划页面树（页数取 `pages`，层级取 `tree`）
 - 骨架建议：总览 → 架构总览 → 核心模块 ×N → 数据流/协议 → 构建·运行 → 已知问题/FAQ。
+- `skeleton.knownIssues == true` 时，"已知问题/风险"页**必选**，不允许省略。
+- 粒度 `granularity`：`theme` 按主题合并相邻模块；`file` 一页对应一个核心文件/文件簇；`hybrid` 核心链路逐文件、外围按主题。
 - 每页先定元数据：`id`（短横线小写）、`parentId`（根为 null）、`order`、`title`、`description`、`filePaths`（3–8 个关键文件，仓库相对路径）。
-- 树要平衡：任何一级 ≤8 个子节点，深度 ≤4。
+- 树要平衡：任何一级子节点数 ≤ `tree.maxChildren`，深度 ≤ `tree.maxDepth`。
 
 ### Phase 3 逐页写作
-- 每页 400–900 字 + 要点列表；开头 2–3 句回答"这页讲什么、读完能干什么"。
-- 架构、数据流、模块边界类页面**必须有 1 张图**：优先内联 SVG（自包含、风格可控，参考线框+配色克制），也可用 mermaid 代码块（查看器内置离线渲染）。
-- 关键代码点用 `` `path/to/file.ts:42` `` 形式引用；跨页引用直接写页面标题。
+- 每页字数取 `wordsPerPage` 区间 + 要点列表；开头 2–3 句回答"这页讲什么、读完能干什么"。
+- 图表策略取 `diagrams`：`minimal`/`rich` 下架构、数据流、模块边界类页面**必须有 1 张图**（优先内联 SVG——自包含、风格可控，参考线框+配色克制；也可用 mermaid 代码块，查看器内置离线渲染）；`rich` 时其余核心页也应配图；`none` 时不配图。
+- 引用策略取 `citations`：`strict` 时每个论断尽量带 `` `仓库相对路径:行号` ``，关键代码点必须带；`relaxed` 至少给出涉及的文件路径。跨页引用直接写页面标题。selfcheck 会机检所有 `` `path:line` `` 引用（文件存在 + 行号在界内），引用不存在或越界 = 生成失败。
 - 面向"接手的人"：讲清不变量、坑、为什么这样设计，而不是复述目录名。
 
 ### Phase 4 落盘与构建
 产物写到 `<仓库>/.zcode-wiki/`：
 - `wiki.json`：`{"schema":"repo-wiki-local/1","repoId":"<绝对路径>","language":"…","generatedBy":"agent","pages":[{id,parentId,title,order,description,filePaths,markdown}]}`（markdown 内嵌，作为唯一事实源）
+- `generation-meta.json`：Phase 0.5 由 resolve-config 写入，记录生效配置与 provenance，留档复现。
 - `pages/<id>.md`：每页一份导出（便于人读和 diff），构建以 wiki.json 为准。
 - 然后 `build` + `selfcheck`，两者必须全绿。
 
@@ -77,3 +102,4 @@ python3 build_wiki_site.py selfcheck   --wiki <.zcode-wiki目录>          # 树
 - 页面树：无孤儿（父缺失降级为根并告警）、无环、order 可排序。
 - `site/index.html` 存在且自包含：`href=`/`src=` 属性中不得出现 `http(s)://` 外链（mermaid 运行时已内联，允许 `xmlns` 命名空间声明）。
 - 内联 mermaid 库存在（assets/mermaid.min.js 已打进站点），否则报告为降级（图表仅显源码）。
+- **引用可解析性（常开，不受配置控制）**：页面中所有 `` `路径:行号` `` 引用必须满足文件存在且行号在界内；仓库根不可用的存量 wiki 降级为警告。

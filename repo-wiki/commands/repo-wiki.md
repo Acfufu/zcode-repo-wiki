@@ -1,6 +1,6 @@
 ---
 description: 生成、导入或浏览纯本地 Repo Wiki（零上传）
-argument-hint: "[generate <仓库路径> | import-legacy <hash|路径> | view <wiki目录>]"
+argument-hint: "[generate <仓库路径> [--set k=v …] | import-legacy <hash|路径> | view <wiki目录>]"
 skills: repo-wiki
 ---
 
