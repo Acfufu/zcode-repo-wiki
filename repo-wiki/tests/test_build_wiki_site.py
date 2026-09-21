@@ -296,6 +296,59 @@ def main():
     check("R5: legacy-src fixture imports", p.returncode == 0 and "导入完成" in p.stdout,
           (p.stdout + p.stderr).strip()[-90:])
 
+    # ---- site brand: optional top-level `title` drives the display name
+    d = pathlib.Path(tmp) / "brand-title"
+    d.mkdir()
+    (d / "wiki.json").write_text(json.dumps(
+        {"repoId": "../..", "title": "zcode-repo-wiki",
+         "pages": [{"id": "a", "title": "A", "markdown": "# A\n\n正文。\n"}]}), encoding="utf-8")
+    cli("build", "--wiki", str(d))
+    site = (d / "site" / "index.html").read_text(encoding="utf-8")
+    check("brand: top-level title wins over repoId",
+          '<div id="repo">zcode-repo-wiki</div>' in site
+          and "<title>zcode-repo-wiki</title>" in site)
+
+    d = pathlib.Path(tmp) / "brand-fallback"
+    d.mkdir()
+    write_wiki(d, [{"id": "a", "title": "A", "markdown": "# A\n\n正文。\n"}], repo_id="my-repo")
+    cli("build", "--wiki", str(d))
+    site = (d / "site" / "index.html").read_text(encoding="utf-8")
+    check("brand: falls back to repoId when title is absent",
+          '<div id="repo">my-repo</div>' in site)
+
+    # ---- viewer: the inlined viewer script must actually parse
+    # A syntax error here kills search / theme toggle / mermaid at once and is
+    # invisible to substring assertions, so it gets a real parser, not a regex.
+    d = pathlib.Path(tmp) / "viewer-js"
+    d.mkdir()
+    write_wiki(d, [{"id": "a", "title": "A",
+                    "markdown": "# A\n\n```mermaid\nflowchart LR\n  X --> Y\n```\n"}])
+    cli("build", "--wiki", str(d))
+    scripts = re.findall(r"<script\b[^>]*>(.*?)</script>",
+                         (d / "site" / "index.html").read_text(encoding="utf-8"), re.S)
+    node = shutil.which("node")
+    if node is None:                      # 常见安装位置兜底（GUI 环境 PATH 常缺 node）
+        for cand in sorted(pathlib.Path.home().glob(".nvm/versions/node/*/bin/node"),
+                           reverse=True) + [pathlib.Path("/opt/homebrew/bin/node"),
+                                            pathlib.Path("/usr/local/bin/node")]:
+            if cand.is_file():
+                node = str(cand)
+                break
+    if node is None:
+        print("SKIP viewer JS syntax check (node not found; CI installs it)")
+    else:
+        bad = []
+        for i, s in enumerate(scripts):
+            f = pathlib.Path(tmp) / f"viewer-{i}.js"
+            f.write_text(s, encoding="utf-8")
+            p = run([node, "--check", str(f)])
+            if p.returncode != 0:
+                lines = [ln.strip() for ln in p.stderr.strip().splitlines() if ln.strip()]
+                err = next((ln for ln in lines if "Error" in ln), lines[-1] if lines else "?")
+                bad.append(f"script[{i}]: {err[:70]}")
+        check(f"viewer: {len(scripts)} inlined script(s) parse (node --check)", not bad,
+              "; ".join(bad))
+
     failed = [n for n, ok in RESULTS if not ok]
     print(f"\n{len(RESULTS) - len(failed)}/{len(RESULTS)} passed" +
           (f"; FAILURES: {failed}" if failed else ""))

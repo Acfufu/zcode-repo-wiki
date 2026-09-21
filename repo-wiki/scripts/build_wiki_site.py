@@ -616,7 +616,6 @@ search.addEventListener('input',function(){
     var tpos=it.text.toLowerCase().indexOf(q);
     out.push({id:id,t:it.title,s:it.text.substr(tpos>=0?Math.max(0,tpos-30):0,90)});
     if(out.length>=30)break;}
-  }
   hits.innerHTML='';
   if(!out.length){var none=document.createElement('div');none.className='hit none';none.textContent='无命中';hits.appendChild(none);}
   else{out.forEach(function(h){
@@ -776,7 +775,9 @@ def build_site(wiki_dir: Path) -> dict:
             "desc": p["description"],
             "text": html.unescape(_strip_tags(md_to_html(p["markdown"])))[:20000],
         }
-    title = _clean_text(str(data.get("repoId") or wiki_dir.name))
+    # 品牌位显示名：可选 title 优先，其次 repoId（历史行为），最后落目录名。
+    # repoId 仍是引用机检的仓库根，两者互不影响。
+    title = _clean_text(str(data.get("title") or data.get("repoId") or wiki_dir.name))
     lang = str(data.get("language") or "zh-CN")
     if not _LANG_RE.match(lang):
         lang = "zh-CN"

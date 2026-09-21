@@ -86,7 +86,7 @@ python3 build_wiki_site.py selfcheck      --wiki <.zcode-wiki目录>   # 树完�
 
 ### Phase 4 落盘与构建
 产物写到 `<仓库>/.zcode-wiki/`：
-- `wiki.json`：`{"schema":"repo-wiki-local/1","repoId":"<绝对路径>","language":"…","generatedBy":"agent","pages":[{id,parentId,title,order,description,filePaths,markdown}]}`（markdown 内嵌，作为唯一事实源）
+- `wiki.json`：`{"schema":"repo-wiki-local/1","repoId":"<绝对路径>","title":"<可选，站点品牌位显示名>","language":"…","generatedBy":"agent","pages":[{id,parentId,title,order,description,filePaths,markdown}]}`（markdown 内嵌，作为唯一事实源）。顶层 `title` 只影响站点品牌位显示（缺省回落到 `repoId`，与历史行为一致）；引用机检的仓库根始终取 `repoId`，与显示名无关。
 - `generation-meta.json`：Phase 0.5 由 resolve-config 写入，记录生效配置与 provenance，留档复现。
 - `pages/<id>.md`：每页一份导出（便于人读和 diff），构建以 wiki.json 为准。
 - 然后 `build` + `selfcheck`，两者必须全绿。
