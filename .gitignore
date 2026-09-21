@@ -7,4 +7,4 @@ __pycache__/
 repo-wiki/tests/fixture/*/site/
 .lazyzcode/
 artifacts/
-
+docs/demo/site/

@@ -1,0 +1,42 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: python ${{ matrix.python }} · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, python: "3.9" }
+          - { os: ubuntu-latest, python: "3.11" }
+          - { os: ubuntu-latest, python: "3.13" }
+          - { os: macos-latest, python: "3.13" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      # viewer 的内联脚本由 node 做真实语法校验（回归套件在无 node 时显式 SKIP）
+      - name: node (viewer JS syntax gate)
+        run: node --version
+
+      - name: Regression suite
+        run: python3 repo-wiki/tests/test_build_wiki_site.py
+
+      # 演示样张的引用指向仓库真实文件，行号漂移必须被 CI 拦住
+      - name: Build and selfcheck the shipped demo
+        run: |
+          python3 repo-wiki/scripts/build_wiki_site.py build --wiki docs/demo
+          python3 repo-wiki/scripts/build_wiki_site.py selfcheck --wiki docs/demo

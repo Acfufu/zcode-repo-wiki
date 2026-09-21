@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="repo-wiki">
+  <title>repo-wiki</title>
+  <defs>
+    <linearGradient id="rwbg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1f6feb"/>
+      <stop offset="1" stop-color="#8a4bdf"/>
+    </linearGradient>
+    <clipPath id="rwpage">
+      <rect x="20" y="24" width="80" height="72" rx="12"/>
+    </clipPath>
+  </defs>
+
+  <rect width="120" height="120" rx="26" fill="url(#rwbg)"/>
+  <rect x="20" y="24" width="80" height="72" rx="12" fill="#ffffff" opacity="0.97"/>
+
+  <g clip-path="url(#rwpage)">
+    <rect x="20" y="24" width="26" height="72" fill="#e2ebff"/>
+    <rect x="24" y="32" width="18" height="4" rx="2" fill="#1f6feb" opacity="0.55"/>
+    <rect x="24" y="42" width="16" height="3.5" rx="1.75" fill="#1f6feb" opacity="0.35"/>
+    <rect x="24" y="50" width="18" height="3.5" rx="1.75" fill="#1f6feb" opacity="0.35"/>
+    <rect x="24" y="58" width="14" height="3.5" rx="1.75" fill="#1f6feb" opacity="0.35"/>
+    <rect x="24" y="70" width="17" height="3.5" rx="1.75" fill="#1f6feb" opacity="0.22"/>
+
+    <rect x="54" y="33" width="36" height="6" rx="3" fill="#1f6feb" opacity="0.8"/>
+    <rect x="54" y="45" width="40" height="3.5" rx="1.75" fill="#0f172a" opacity="0.18"/>
+    <rect x="54" y="52" width="34" height="3.5" rx="1.75" fill="#0f172a" opacity="0.18"/>
+
+    <path d="M61 78h6M77 78h6" stroke="#8a4bdf" stroke-width="2.4" stroke-linecap="round" opacity="0.75"/>
+    <circle cx="56" cy="78" r="4.6" fill="#1f6feb"/>
+    <circle cx="72" cy="78" r="4.6" fill="#8a4bdf"/>
+    <circle cx="88" cy="78" r="4.6" fill="#1f6feb" opacity="0.6"/>
+  </g>
+
+  <rect x="20" y="24" width="80" height="72" rx="12" fill="none" stroke="#0f172a" stroke-opacity="0.10" stroke-width="1.5"/>
+</svg>

@@ -1,0 +1,122 @@
+{
+ "schema": "repo-wiki-local/1",
+ "repoId": "../..",
+ "title": "zcode-repo-wiki",
+ "language": "zh-CN",
+ "generatedBy": "demo",
+ "pages": [
+  {
+   "id": "overview",
+   "title": "总览",
+   "order": 1,
+   "description": "repo-wiki 插件的整体结构与零上传契约",
+   "filePaths": [
+    "repo-wiki/scripts/build_wiki_site.py",
+    "repo-wiki/skills/repo-wiki/SKILL.md"
+   ],
+   "sources": [
+    {
+     "path": "repo-wiki/skills/repo-wiki/SKILL.md",
+     "startLine": 1
+    }
+   ],
+   "markdown": "repo-wiki 是一个**纯本地**的仓库深度文档插件：由 agent 在本地读代码、按主题切页，产出带文件证据的分页 wiki，最后构建成一个自包含的静态站点。\n\n**零上传、零网络**是它的价值契约：生成过程不发任何网络请求，站点产物零外链、离线可用。这不是一句宣传语，而是由构建期机检强制执行的约束。\n\n```mermaid\nflowchart LR\n  A[\"本地仓库\"] --> B[\"agent 按 SKILL.md 分析\"]\n  B --> C[\".zcode-wiki/wiki.json\"]\n  C --> D[\"build_wiki_site.py\"]\n  D --> E[\"site/index.html<br/>自包含 · 零外链\"]\n```\n\n## 四个子命令\n\n| 子命令 | 作用 |\n|---|---|\n| `build` | 由 `wiki.json` 构建自包含站点 |\n| `selfcheck` | 目录树完整性 + 零外链 + 引用可解析性 |\n| `resolve-config` | 三层合并生成配置并落 `generation-meta.json` |\n| `import-legacy` | 把旧版（≤3.13）存量数据转为本插件格式 |\n\n`wiki.json` 是唯一事实源，页面的 markdown 内嵌其中（结构见 `repo-wiki/skills/repo-wiki/SKILL.md:89`）；构建入口在 `repo-wiki/scripts/build_wiki_site.py:1266`。\n\n页面顶部的路径 chip 来自 `filePaths`，`来源` 角标来自 `sources`——两者都记录本页内容对应的真实文件与起始行。"
+  },
+  {
+   "id": "install",
+   "parentId": "overview",
+   "title": "安装与升级",
+   "order": 2,
+   "description": "install.sh 如何同步插件、注册并启用，以及产物与权限策略",
+   "filePaths": [
+    "install.sh",
+    "repo-wiki/.zcode-plugin/plugin.json"
+   ],
+   "sources": [
+    {
+     "path": "install.sh",
+     "startLine": 1
+    },
+    {
+     "path": "install.sh",
+     "startLine": 55
+    }
+   ],
+   "markdown": "`install.sh` 是本地安装器：同步插件到引擎缓存、注册 registry entry、并在 `setting.json` 的 `enabledPlugins` 里启用。可重复执行，幂等。\n\n```bash\nbash install.sh        # 同步 → 注册 → 启用；zsh install.sh 亦可\n```\n\n先做依赖检查：缺 `python3`、`rsync`、`zip` 之一即退出（`install.sh:8`）。随后按 `plugin.json` 里的 `name`/`version` 计算缓存目录 `~/.zcode/cli/plugins/cache/local/<name>/<version>/`，用 `rsync --delete-excluded` 同步，并统一排除 `tests/`、`__pycache__`、`.zip`、`.lazylcode/`、`artifacts/`（`install.sh:55`）。\n\n## zip 的重建策略\n\n仓库根目录的 `<name>-<version>.zip` 只在**缺失**或**源文件比它新**时重建（`install.sh:65`），因此重复安装不会无谓改写仓库产物；registry 里记录的 sha256 与缓存内容一致。打包失败会回滚本次新建的缓存目录并保留旧包。\n\n## 配置写入的原子性与权限\n\nregistry、`setting.json`（以及历史遗留的 `config.json`）三份内容先全部落到临时文件，再统一备份后替换，失败不留半安装状态；既有文件保留原权限，**新建的配置文件用 0600**（`install.sh:171`）——因为引擎配置可能含凭据。备份文件与源文件同权限，避免凭据副本被放宽。"
+  },
+  {
+   "id": "builder",
+   "parentId": "overview",
+   "title": "构建器与子命令",
+   "order": 3,
+   "description": "build / selfcheck / resolve-config / import-legacy 的行为与边界",
+   "filePaths": [
+    "repo-wiki/scripts/build_wiki_site.py"
+   ],
+   "sources": [
+    {
+     "path": "repo-wiki/scripts/build_wiki_site.py",
+     "startLine": 1266
+    },
+    {
+     "path": "repo-wiki/scripts/build_wiki_site.py",
+     "startLine": 1460
+    }
+   ],
+   "markdown": "单个 Python3 脚本承载全部构建逻辑，纯标准库、无第三方依赖（要求 Python ≥3.7）：\n\n```bash\npython3 repo-wiki/scripts/build_wiki_site.py build          --wiki <仓库>/.zcode-wiki\npython3 repo-wiki/scripts/build_wiki_site.py selfcheck      --wiki <仓库>/.zcode-wiki\npython3 repo-wiki/scripts/build_wiki_site.py resolve-config --repo <仓库路径> [--set k=v …]\npython3 repo-wiki/scripts/build_wiki_site.py import-legacy  <hash>\n```\n\n## build\n\n读取 `wiki.json`，按 `parentId` 组装目录树，把每页 markdown 转成 HTML，内联 mermaid 运行时，产出单文件 `site/index.html`。诊断信息（WARN/FAIL）走 stderr，数据走 stdout。\n\n## selfcheck\n\n三道机检，任一失败即退出码 1：\n\n- **结构**：`site/index.html` 存在、非空、含 `DOCTYPE`/`main`，且页面树无环、父节点存在；\n- **零外链**：真实元素属性与 CSS `url()` 中不得出现 `http(s)://`、`file://`、`data:`、`javascript:`（`xmlns` 命名空间声明除外）；\n- **引用可解析**：所有 `` `路径:行号` `` 引用必须文件存在且行号在界内（`repo-wiki/scripts/build_wiki_site.py:1406`）。这一项**常开**，不受生成配置控制。\n\nmermaid 运行时未内联时降级为 WARN（图表仅显源码），而非失败——站点仍可用。"
+  },
+  {
+   "id": "config",
+   "parentId": "overview",
+   "title": "生成配置",
+   "order": 4,
+   "description": "三层合并、点路径覆盖与 provenance 留档",
+   "filePaths": [
+    "repo-wiki/README.md",
+    "repo-wiki/scripts/build_wiki_site.py"
+   ],
+   "sources": [
+    {
+     "path": "repo-wiki/README.md",
+     "startLine": 1
+    }
+   ],
+   "markdown": "生成配置与内容分离：内容在 `wiki.json`，配置写在旁路的 `generation-meta.json`，schema 不变，旧目录零改动兼容。\n\n合并优先级（低 → 高）：\n\n1. 内置默认值\n2. `~/.zcode/repo-wiki/config.json`\n3. `<仓库>/.zcode-wiki/config.json`\n4. 命令行 `--set` 旗标\n\n不建任何配置文件时，行为与零配置完全一致。`resolve-config` 输出生效配置，并记录每个字段来自哪一层（provenance），`profile` 展开记为 `<层>:profile`。\n\n```json\n{\n  \"profile\": \"standard\",\n  \"language\": \"auto\",\n  \"granularity\": \"theme\",\n  \"pages\":   { \"min\": 6, \"max\": 40 },\n  \"tree\":    { \"maxChildren\": 8, \"maxDepth\": 4 },\n  \"wordsPerPage\": [400, 900],\n  \"diagrams\": \"minimal\",\n  \"citations\": \"strict\"\n}\n```\n\n`--set` 支持点路径下钻（如 `--set pages.max=24`）；列表字段需整体赋值，未知键会被拒绝。嵌套对象按子键合并：仓库层只写 `pages.max` 时，`pages.min` 沿用低层值。\n\n`citations` 取 `strict|relaxed` 只影响生成期的写作策略——引用机检本身永远常开。"
+  },
+  {
+   "id": "privacy",
+   "parentId": "overview",
+   "title": "隐私边界",
+   "order": 5,
+   "description": "把“数据不出本机”拆成可核对的条目",
+   "filePaths": [
+    "repo-wiki/skills/repo-wiki/SKILL.md"
+   ],
+   "sources": [
+    {
+     "path": "repo-wiki/skills/repo-wiki/SKILL.md",
+     "startLine": 1
+    }
+   ],
+   "markdown": "插件把\"数据不出本机\"拆成可核对的条目，而不是笼统承诺：\n\n| 行为 | repo-wiki |\n|---|---|\n| 上传仓库内容 / Git 历史 | 从不 |\n| 网络请求（生成、图表、字体、脚本） | 从不 |\n| 读取 `.git` 对象内容 | 从不（唯一例外：可选的 `git log --oneline -15` 摘要命令） |\n| 产物位置 | 仅本地磁盘 |\n\n站点的零外链不是\"约定\"，而是构建期机检的结果：外链扫描覆盖单/双/无引号属性、实体编码、protocol-relative、`values/to/from/by`、`@import` 与 CSS 字符串 URL（含反斜杠转义归一）。\n\n直通 SVG 会被 XML 解析器按白名单净化：删除脚本、事件属性、外部 URL 以及 `<style>`/`style=`/`<animate>`，保留滤镜、几何、`data:image` 内联图与呈现属性；不可解析的输入降级为转义代码文本。\n\n内联的 mermaid 运行时 bundle 内含第三方组件（mermaid、DOMPurify 等）的许可声明，见 `repo-wiki/assets/THIRD-PARTY-NOTICES`。"
+  },
+  {
+   "id": "limits",
+   "parentId": "overview",
+   "title": "已知边界",
+   "order": 6,
+   "description": "机检的能力边界与已知限制",
+   "filePaths": [
+    "repo-wiki/scripts/build_wiki_site.py",
+    "repo-wiki/tests/README.md"
+   ],
+   "sources": [
+    {
+     "path": "repo-wiki/tests/README.md",
+     "startLine": 9
+    }
+   ],
+   "markdown": "- **外链机检是有界启发式**，不是形式化保证：它覆盖真实元素属性的常见形态与 CSS 上下文，但无法证明\"任何输入都不可能生成外链\"。讲解 CSS 的代码块与行内代码不会被误报。\n- **引用机检只覆盖白名单扩展名**（见 `repo-wiki/scripts/build_wiki_site.py:1406` 的 `_REF_EXTS`）；未列入的扩展名不做机检。\n- **图表需要内联的 mermaid 运行时**：资产缺失时站点不会失败，而是降级为展示图表源码。\n- **禁用 JS 时给出静态提示**：搜索、主题切换、页面切换都依赖前端脚本。\n- **搜索索引有单页上限**：单页正文超过 2 万字符的部分不参与搜索，页面内容本身不受影响。\n- **仓库已移动或删除的存量 wiki**：引用机检降级为 WARN 而非 FAIL，避免把\"仓库不在原处\"误报成\"文档损坏\"。"
+  }
+ ]
+}

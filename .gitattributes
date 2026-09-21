@@ -1,0 +1,8 @@
+# 统一行尾（install.sh 与技能脚本按 LF 分发）与二进制标记
+* text=auto eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+*.svg text eol=lf
+*.png binary
+*.zip binary
+*.js binary
